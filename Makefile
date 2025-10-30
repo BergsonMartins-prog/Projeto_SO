@@ -8,6 +8,7 @@ all: $(BIN)
 
 $(BIN): $(OBJ)
 	$(CC) $(OBJ) -o $(BIN)
+	@rm -f $(OBJ)
 
 clean:
 	rm -f $(OBJ) $(BIN)
