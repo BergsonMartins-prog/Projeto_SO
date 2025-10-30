@@ -1,6 +1,8 @@
 #ifndef TCB_H
 #define TCB_H
+
 #include "tarefa.h"
+
 typedef enum{ 
     NOVA,
     PRONTA,
@@ -33,4 +35,5 @@ void tcb_executar_tick(TCB *tcb, int tick);
 void tcb_add_segment(TCB *tcb, int start, int length);
 void tcb_exibir(const TCB *tcb);
 void tcb_free(TCB *tcb);
+
 #endif

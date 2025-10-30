@@ -10,7 +10,7 @@
 #include "tarefa.h"
 
 int main(int argc, char **argv){
-    if (argc < 4) {
+    if(argc < 4) {
         printf("Uso: %s <config.txt> <modo: passo|auto> <saida.svg>\n", argv[0]);
         printf("Exemplo: %s examples/exemplo_config.txt passo saida.svg\n", argv[0]);
         return 1;
@@ -22,7 +22,7 @@ int main(int argc, char **argv){
 
     //ler arquivo de configuração
     Config cfg = {0};
-    if (parser_ler_arquivo(config_path, &cfg) != 0) {
+    if(parser_ler_arquivo(config_path, &cfg) != 0) {
         printf("Erro ao ler arquivo de configuração\n");
         return 2;
     }
@@ -47,9 +47,9 @@ int main(int argc, char **argv){
     int max_sim_ticks = 1000000; // evitar loops infinitos
 
     // Para cada TCB NOVA cujo ingresso == tick, adicionamos à fila de prontos
-    while (remaining > 0 && tick < max_sim_ticks) {
-        for (TCB *p = all_head; p != NULL; p = p->prox) {
-                if (p->estado == NOVA && p->tarefa.ingresso == tick) {
+    while(remaining > 0 && tick < max_sim_ticks) {
+        for(TCB *p = all_head; p != NULL; p = p->prox) {
+                if(p->estado == NOVA && p->tarefa.ingresso == tick) {
                 scheduler_adicionar(p);
                 p->estado = PRONTA;
                 printf("[tick %d] Tarefa %s chegou e foi para PRONTA\n", tick, p->tarefa.id);
@@ -58,9 +58,9 @@ int main(int argc, char **argv){
 
         TCB *sel = scheduler_escolher_proxima();//escolhe a proxima tarefa pra executar
 
-        if (sel) {
-            /* executar 1 tick na tarefa selecionada (tcb_executar_tick atualiza segmentos e tempos) */
-            sel->estado = EXECUTANDO; /* garantia local, o scheduler já fez isso */
+        if(sel) {
+            // executar 1 tick na tarefa selecionada (tcb_executar_tick atualiza segmentos e tempos)
+            sel->estado = EXECUTANDO; // garantia local, o scheduler já fez isso
             tcb_executar_tick(sel, tick);
             printf("[tick %d] Executando %s (rem=%d)\n", tick, sel->tarefa.id, sel->tempo_restante);
                 if (sel->estado == FINALIZADA) {
@@ -69,18 +69,7 @@ int main(int argc, char **argv){
                 printf("[tick %d] %s FINALIZADA\n", tick, sel->tarefa.id);
             } 
             else {
-                /*
-                 * Se não terminou, decidimos se devolvemos a tarefa para a fila de prontos.
-                 * - Para algoritmos preemptivos (SRTF, PRIORIDADE) devolvemos para que o scheduler
-                 *   possa reconsiderá-la no próximo tick.
-                 * - Para FIFO (não-preemptivo) não devolvemos, permitindo que a mesma tarefa
-                 *   permaneça como 'executando' até terminar.
-                 *
-                 * Observação: esta decisão poderia ser encapsulada no scheduler (por exemplo,
-                 * um flag que indica se o algoritmo é preemptivo). Aqui optamos por checar
-                 * a string do algoritmo para simplicidade didática.
-                 */
-                if (strcasecmp(cfg.algoritmo, "SRTF") == 0
+                if(strcasecmp(cfg.algoritmo, "SRTF") == 0
                  || strcasecmp(cfg.algoritmo, "PRIORIDADE") == 0
                  || strcasecmp(cfg.algoritmo, "PRIORITY") == 0) {
                     scheduler_yield_current();
@@ -92,9 +81,9 @@ int main(int argc, char **argv){
         }
 
         //modo passo-a-passo 
-        if (modo_passo) {
+        if(modo_passo) {
             printf("=== Estado no tick %d ===\n", tick);
-            for (TCB *p = all_head; p != NULL; p = p->prox) {
+            for(TCB *p = all_head; p != NULL; p = p->prox) {
                 tcb_exibir(p);
             }
             printf("Pressione ENTER para avançar...\n");
@@ -103,12 +92,12 @@ int main(int argc, char **argv){
         tick++;
     }
 
-    //Ao final, gera o SVG com o gráfico de Gantt 
+    //Gera SVG com o gráfico de Gantt 
     int total_ticks = tick;
     ui_salvar_gantt_svg(all_head, total_ticks, svg_out);
 
     // Libera TCBs e memória do parser
-    for (TCB *p = all_head; p != NULL; ) {
+    for(TCB *p = all_head; p != NULL; ) {
         TCB *nx = p->prox;
         tcb_free(p);
         p = nx;
