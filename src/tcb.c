@@ -3,49 +3,45 @@
 #include <string.h>
 #include "tcb.h"
 
-/* Capacidade inicial do array de segmentos. */
-#define INITIAL_SEGS_CAP 4
+#define CAPACIDADE_SEGS 4
 
-/* Cria TCB a partir de Tarefa e inicializa campos. */
+//incializa TCB
 TCB* tcb_criar(const Tarefa *t) {
     TCB *novo = (TCB*) malloc(sizeof(TCB));
     if (!novo) {
-        fprintf(stderr, "[ERRO] Falha ao alocar TCB\n");
-        exit(EXIT_FAILURE); /* Em projeto acadêmico podemos abortar; em produção, retornar erro */
+        printf("[ERRO] Falha ao alocar TCB\n");
+        return NULL;
     }
 
-    /* copia os dados estáticos */
     novo->tarefa = *t;
-
-    /* inicializa campos dinâmicos */
     novo->estado = NOVA;
     novo->tempo_restante = t->duracao;
     novo->tempo_executado = 0;
     novo->tempo_inicio = -1;
     novo->tempo_fim = -1;
-    /* prox: mantém a lista global de TCBs (all_head) */
+    //prox: mantém a lista global de TCBs (all_head)
     novo->prox = NULL;
-    /* prox_pronto: usado pela fila de prontos no scheduler */
+    //prox_pronto: usado pela fila de prontos no scheduler
     novo->prox_pronto = NULL;
 
-    /* aloca array inicial para segmentos do Gantt */
-    novo->segs = (Seg*) malloc(sizeof(Seg) * INITIAL_SEGS_CAP);
+    //aloca array inicial para segmentos do Gantt
+    novo->segs = (Seg*) malloc(sizeof(Seg) * CAPACIDADE_SEGS);
     if (!novo->segs) {
-        fprintf(stderr, "[ERRO] Falha ao alocar segmentos\n");
+        printf("[ERRO] Falha ao alocar segmentos\n");
         free(novo);
-        exit(EXIT_FAILURE);
+        return NULL;
     }
     novo->segs_count = 0;
-    novo->segs_cap = INITIAL_SEGS_CAP;
+    novo->segs_cap = CAPACIDADE_SEGS;
 
     return novo;
 }
 
-/* Garante capacidade no array de segmentos (dobra quando cheio). */
+//Garante capacidade no array de segmentos (dobra quando cheio)
 static void ensure_segs(TCB *tcb) {
-    /* Invariante esperada: segs_cap > 0 (inicializado em tcb_criar) */
+    //Invariante esperada: segs_cap > 0 (inicializado em tcb_criar)
     if (tcb->segs_count >= tcb->segs_cap) {
-        int nc = tcb->segs_cap * 2; /* nova capacidade (dobrar) */
+        int nc = tcb->segs_cap * 2; // nova capacidade (dobrar)
         Seg *ns = (Seg*) realloc(tcb->segs, sizeof(Seg) * nc);
         if (!ns) {
             fprintf(stderr, "[ERRO] Falha realloc segs\n");
@@ -56,63 +52,64 @@ static void ensure_segs(TCB *tcb) {
     }
 }
 
-/* Adiciona segmento; concatena com o anterior se contíguo. */
+//Concatena com o anterior se contínuo
 void tcb_add_segment(TCB *tcb, int start, int length) {
     if (!tcb) return;
     if (length <= 0) return;
 
-    /* Se houver um segmento anterior, checar contiguidade */
+    //Se houver um segmento anterior, checar contiguidade
     if (tcb->segs_count > 0) {
         Seg *last = &tcb->segs[tcb->segs_count - 1];
-        /* Contíguo se último termina exatamente em 'start' */
+        // Contíguo se último termina exatamente em 'start'
         if (last->start + last->length == start) {
-            last->length += length; /* concatena */
+            last->length += length; // concatena
             return;
         }
     }
 
-    /* Garantir espaço e inserir novo segmento */
+    //Garantir espaço e inserir novo segmento
     ensure_segs(tcb);
     tcb->segs[tcb->segs_count].start = start;
     tcb->segs[tcb->segs_count].length = length;
     tcb->segs_count++;
 }
 
-/* Executa 1 tick: atualiza segmentos/contadores; finaliza se rem==0. */
+//Executa 1 tick e finaliza se restante==0
 void tcb_executar_tick(TCB *tcb, int tick) {
     if (!tcb) return;
-    if (tcb->tempo_restante <= 0) return; /* já terminou ou inválido */
-
-    /* marca o primeiro início */
-    if (tcb->tempo_inicio == -1) tcb->tempo_inicio = tick;
-
-    /* Atualiza segmentos: se o último segmento termina em 'tick', estende; senão cria novo */
+    if (tcb->tempo_restante <= 0) {
+        return;
+    } //já terminou ou inválido
+    if (tcb->tempo_inicio == -1) {
+        tcb->tempo_inicio = tick;
+    }   
+    //Atualiza segmentos: se o último segmento termina em 'tick', estende; senão cria novo
     if (tcb->segs_count > 0) {
         Seg *last = &tcb->segs[tcb->segs_count - 1];
         if (last->start + last->length == tick) {
-            /* contíguo: estende em 1 */
+            //contínuo: estende em 1 
             last->length += 1;
         } else {
-            /* não contíguo: novo segmento de comprimento 1 */
+            //não contínuo: novo segmento de comprimento 1
             tcb_add_segment(tcb, tick, 1);
         }
     } else {
-        /* primeiro segmento */
+        //primeiro segmento
         tcb_add_segment(tcb, tick, 1);
     }
 
-    /* atualizar contadores */
+    //atualizar contadores
     tcb->tempo_executado += 1;
     tcb->tempo_restante -= 1;
 
-    /* se terminou, registrar fim e estado */
+    //Se terminou, registrar fim e estado
     if (tcb->tempo_restante == 0) {
-        tcb->tempo_fim = tick + 1; /* fim do intervalo [tick, tick+1) */
+        tcb->tempo_fim = tick + 1; //fim do intervalo [tick, tick+1)
         tcb->estado = FINALIZADA;
     }
 }
 
-/* Altera estado do TCB. */
+//muda estado do TCB
 void tcb_mudar_estado(TCB *tcb, Estado novo) {
     if (!tcb) return;
     tcb->estado = novo;
@@ -132,8 +129,8 @@ void tcb_exibir(const TCB *tcb) {
            tcb->tempo_fim);
 }
 
-/* Libera memória do TCB (incluindo array de segmentos) */
-void tcb_destruir(TCB *tcb) {
+//libera memória do TCB
+void tcb_free(TCB *tcb) {
     if (!tcb) return;
     if (tcb->segs) free(tcb->segs);
     free(tcb);

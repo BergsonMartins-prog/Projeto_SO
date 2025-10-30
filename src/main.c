@@ -110,7 +110,7 @@ int main(int argc, char **argv){
     // Libera TCBs e memória do parser
     for (TCB *p = all_head; p != NULL; ) {
         TCB *nx = p->prox;
-        tcb_destruir(p);
+        tcb_free(p);
         p = nx;
     }
     parser_liberar(&cfg);
