@@ -1,8 +1,3 @@
-/*
- * src/tcb.c
- * Funções do TCB: criar, destruir, executar 1 tick e registrar segmentos.
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

@@ -9,15 +9,15 @@
 #include "ui.h"
 #include "tarefa.h"
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv){
     if (argc < 4) {
         printf("Uso: %s <config.txt> <modo: passo|auto> <saida.svg>\n", argv[0]);
         printf("Exemplo: %s examples/exemplo_config.txt passo saida.svg\n", argv[0]);
         return 1;
     }
-    const char *config_path = argv[1];
-    const char *modo = argv[2];
-    const char *svg_out = argv[3];
+    char *config_path = argv[1];
+    char *modo = argv[2];
+    char *svg_out = argv[3];
     int modo_passo = (strcasecmp(modo, "passo") == 0);
 
     //ler arquivo de configuração
@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
     int remaining = cfg.n_tarefas;
     int max_sim_ticks = 1000000; // evitar loops infinitos
 
-    // Checagem de chegada: para cada TCB NOVA cujo ingresso == tick, adicionamos à fila de prontos
+    // Para cada TCB NOVA cujo ingresso == tick, adicionamos à fila de prontos
     while (remaining > 0 && tick < max_sim_ticks) {
         for (TCB *p = all_head; p != NULL; p = p->prox) {
                 if (p->estado == NOVA && p->tarefa.ingresso == tick) {
@@ -56,8 +56,7 @@ int main(int argc, char **argv) {
             }
         }
 
-        /* Escolher próxima tarefa pelo scheduler (decisão) */
-        TCB *sel = scheduler_escolher_proxima();
+        TCB *sel = scheduler_escolher_proxima();//escolhe a proxima tarefa pra executar
 
         if (sel) {
             /* executar 1 tick na tarefa selecionada (tcb_executar_tick atualiza segmentos e tempos) */
@@ -89,11 +88,10 @@ int main(int argc, char **argv) {
             }
         } 
         else {
-            /* CPU ociosa neste tick */
-            printf("[tick %d] CPU ociosa\n", tick);
+            printf("[tick %d] CPU ociosa\n", tick);//caso a "cpu" fique sem tarefa para executar
         }
 
-        /* Modo passo-a-passo: exibe estado e aguarda ENTER para avançar 1 tick */
+        //modo passo-a-passo 
         if (modo_passo) {
             printf("=== Estado no tick %d ===\n", tick);
             for (TCB *p = all_head; p != NULL; p = p->prox) {
@@ -102,16 +100,14 @@ int main(int argc, char **argv) {
             printf("Pressione ENTER para avançar...\n");
             getchar();
         }
-
-        /* Avança o relógio (tick) */
         tick++;
     }
 
-    /* Ao final, gera o SVG com o gráfico de Gantt */
+    //Ao final, gera o SVG com o gráfico de Gantt 
     int total_ticks = tick;
     ui_salvar_gantt_svg(all_head, total_ticks, svg_out);
 
-    /* Cleanup: libera TCBs e memória do parser */
+    // Libera TCBs e memória do parser
     for (TCB *p = all_head; p != NULL; ) {
         TCB *nx = p->prox;
         tcb_destruir(p);
