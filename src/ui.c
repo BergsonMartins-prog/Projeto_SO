@@ -9,18 +9,18 @@
 
 // Cabeçalho SVG.
 static void svg_header(FILE *f, int width, int height) {
-    printf(f, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-    printf(f, "<svg xmlns=\"http://www.w3.org/2000/svg\" ");
-    printf(f, "width=\"%d\" height=\"%d\" viewBox=\"0 0 %d %d\">\n", width, height, width, height);
+    fprintf(f, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    fprintf(f, "<svg xmlns=\"http://www.w3.org/2000/svg\" ");
+    fprintf(f, "width=\"%d\" height=\"%d\" viewBox=\"0 0 %d %d\">\n", width, height, width, height);
 }
 
 static void svg_footer(FILE *f) {
-    printf(f, "</svg>\n");
+    fprintf(f, "</svg>\n");
 }
 
 // Texto SVG. 
 static void svg_text(FILE *f, int x, int y, const char *text) {
-    printf(f, "<text x=\"%d\" y=\"%d\" font-family=\"Arial\" font-size=\"12\">%s</text>\n", x, y, text);
+    fprintf(f, "<text x=\"%d\" y=\"%d\" font-family=\"Arial\" font-size=\"12\">%s</text>\n", x, y, text);
 }
 
 // Gera e salva o Gantt em SVG. 
@@ -31,7 +31,7 @@ int ui_salvar_gantt_svg(TCB *tcbs_head, int total_ticks, const char *filename) {
     int n = 0;
     for(TCB *p = tcbs_head; p != NULL; p = p->prox) n++;
     if(n == 0) {
-        printf(stderr, "[UI] sem tarefas para desenhar.\n");
+        fprintf(stderr, "[UI] sem tarefas para desenhar.\n");
         return -1;
     }
 
@@ -46,7 +46,7 @@ int ui_salvar_gantt_svg(TCB *tcbs_head, int total_ticks, const char *filename) {
     for(int t = 0; t <= total_ticks; ++t) {
         int x = MARGIN + t * UNIT_W;
         // Marca em cada tick (1 em 1) 
-        printf(f, "<line x1=\"%d\" y1=\"%d\" x2=\"%d\" y2=\"%d\" stroke=\"#ddd\" stroke-width=\"1\" />\n",
+        fprintf(f, "<line x1=\"%d\" y1=\"%d\" x2=\"%d\" y2=\"%d\" stroke=\"#ddd\" stroke-width=\"1\" />\n",
                 x, MARGIN, x, MARGIN + n*ROW_H);
         char num[16]; snprintf(num, sizeof(num), "%d", t);
         svg_text(f, x+2, MARGIN-5, num);
@@ -62,7 +62,7 @@ int ui_salvar_gantt_svg(TCB *tcbs_head, int total_ticks, const char *filename) {
         svg_text(f, 2, y + ROW_H/2 + 5, label);
 
         // Fundo da linha (grade) 
-        printf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"#f8f8f8\" stroke=\"#eee\" />\n",
+        fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"#f8f8f8\" stroke=\"#eee\" />\n",
                 MARGIN, y, total_ticks*UNIT_W, ROW_H-6);
 
     // Desenha retângulo vazio representando tempo de espera (ingresso -> tempo_inicio)
@@ -74,7 +74,7 @@ int ui_salvar_gantt_svg(TCB *tcbs_head, int total_ticks, const char *filename) {
         int wx = MARGIN + wait_start * UNIT_W;
         int ww = wait_len * UNIT_W;
         // branco com borda leve para indicar espera 
-        printf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"#ffffff\" stroke=\"#bbb\" stroke-width=\"1\" />\n",
+        fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"#ffffff\" stroke=\"#bbb\" stroke-width=\"1\" />\n",
             wx, y, ww, ROW_H-10);
     }
 
@@ -84,7 +84,7 @@ int ui_salvar_gantt_svg(TCB *tcbs_head, int total_ticks, const char *filename) {
             int sw = p->segs[s].length * UNIT_W;
             const char *col = p->tarefa.cor;
             if(!col || strlen(col) == 0) col = "#88c";
-            printf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"%s\" stroke=\"#333\" stroke-width=\"1\" />\n",
+            fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"%s\" stroke=\"#333\" stroke-width=\"1\" />\n",
                     sx, y, sw, ROW_H-10, col);
         }
         idx++;
