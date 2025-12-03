@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <limits.h>
 #include "scheduler.h"
 
 // Lista encadeada de prontos  
@@ -12,6 +13,8 @@ static TCB *executando = NULL;
 // Strings/parametros do algoritmo configurado
 static char algoritmo[32];
 static int quantum_global = 0;
+static int alpha_global = 0; // aging parameter
+static int current_tick_global = 0;
 
 // Remove um TCB da fila de prontos 
 void scheduler_remover(TCB *tcb){
@@ -34,14 +37,21 @@ void scheduler_remover(TCB *tcb){
     }
 }
 
-// Inicializa com algoritmo e quantum 
-void scheduler_init(const char *alg, int quantum) {
+// Inicializa com algoritmo, quantum e alpha (envelhecimento)
+void scheduler_init(const char *alg, int quantum, int alpha) {
     strncpy(algoritmo, alg, sizeof(algoritmo)-1);
     algoritmo[sizeof(algoritmo)-1] = '\0';
     quantum_global = quantum;
+    alpha_global = alpha;
+    current_tick_global = 0;
     prontos_head = prontos_tail = NULL;
     executando = NULL;
-    printf("[Scheduler] inicializado: algoritmo=%s quantum=%d\n", algoritmo, quantum_global);
+    printf("[Scheduler] inicializado: algoritmo=%s quantum=%d alpha=%d\n", algoritmo, quantum_global, alpha_global);
+}
+
+// Set the current simulation tick (used for aging calculations)
+void scheduler_set_current_tick(int tick) {
+    current_tick_global = tick;
 }
 
 // Adiciona tcb à fila de prontos 
@@ -49,6 +59,7 @@ void scheduler_adicionar(TCB *tcb){
     if(!tcb) return;
     tcb->prox_pronto = NULL;
     tcb->estado = PRONTA;
+    tcb->waiting_time = 0; // reset waiting time when added to ready queue
     if(!prontos_head){
         prontos_head = prontos_tail = tcb;
     } 
@@ -81,15 +92,37 @@ static TCB* choose_srtf(void){
     return best;
 }
 
-static TCB* choose_priority(void){
+// Priority chooser without aging (original behavior)
+static TCB* choose_priority_noaging(void) {
     TCB *best = NULL;
-    for(TCB *p = prontos_head; p != NULL; p = p->prox_pronto){
-        if (!best || p->tarefa.prioridade > best->tarefa.prioridade){
+    for (TCB *p = prontos_head; p != NULL; p = p->prox_pronto) {
+        if (!best || p->tarefa.prioridade > best->tarefa.prioridade) {
             best = p;
         }
     }
-    if(executando && executando->estado == EXECUTANDO && executando->tempo_restante > 0){
-        if(!best || executando->tarefa.prioridade >= best->tarefa.prioridade){
+    if (executando && executando->estado == EXECUTANDO && executando->tempo_restante > 0) {
+        if (!best || executando->tarefa.prioridade >= best->tarefa.prioridade) {
+            return executando;
+        }
+    }
+    return best;
+}
+
+// Priority chooser with aging (effective priority = base + alpha * wait_time)
+static TCB* choose_priority_aging(void) {
+    TCB *best = NULL;
+    long best_eff = LONG_MIN;
+    for (TCB *p = prontos_head; p != NULL; p = p->prox_pronto) {
+        long wait = p->waiting_time;
+        if (wait < 0) wait = 0;
+        long eff = (long)p->tarefa.prioridade + (long)alpha_global * wait;
+        if (!best || eff > best_eff) { best = p; best_eff = eff; }
+    }
+    if (executando && executando->estado == EXECUTANDO && executando->tempo_restante > 0) {
+        long wait_e = executando->waiting_time;
+        if (wait_e < 0) wait_e = 0;
+        long eff_e = (long)executando->tarefa.prioridade + (long)alpha_global * wait_e;
+        if (!best || eff_e >= best_eff) {
             return executando;
         }
     }
@@ -106,7 +139,10 @@ TCB* scheduler_escolher_proxima(void){
         chosen = choose_srtf();
     } 
     else if(strcasecmp(algoritmo, "PRIORIDADE") == 0 || strcasecmp(algoritmo, "PRIORITY") == 0) {
-        chosen = choose_priority();
+        chosen = choose_priority_noaging();
+    } else if (strcasecmp(algoritmo, "PRIOPEnv") == 0 || strcasecmp(algoritmo, "PRIOPENV") == 0) {
+        /* Preemptive priority with aging */
+        chosen = choose_priority_aging();
     } 
     else{
         chosen = choose_fifo();
@@ -153,6 +189,7 @@ void scheduler_yield_current(void){
     }
 
     t->estado = PRONTA;
+    t->waiting_time = 0; // reset waiting time when yielding current to ready
     t->prox_pronto = NULL;
 
     if (!prontos_head){

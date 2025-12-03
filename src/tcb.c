@@ -32,6 +32,7 @@ TCB* tcb_criar(const Tarefa *t){
     }
     novo->segs_count = 0;
     novo->segs_cap = CAPACIDADE_SEGS;
+    novo->waiting_time = 0;
 
     return novo;
 }

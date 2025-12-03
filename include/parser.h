@@ -6,6 +6,7 @@
 typedef struct {
     char algoritmo[32];
     int quantum;
+    int alpha; // parâmetro opcional para envelhecimento (PRIOPEnv)
     Tarefa *tarefas;
     int n_tarefas;
 } Config;

@@ -66,8 +66,12 @@ int parser_ler_arquivo(const char *path,Config *cfg){
     }
     strncpy(cfg->algoritmo, tok, sizeof(cfg->algoritmo)-1);
     cfg->algoritmo[sizeof(cfg->algoritmo)-1] = '\0';
+    // segundo token: quantum (opcional)
     tok = strtok(NULL, ";");
     if (tok) cfg->quantum = atoi(tok); else cfg->quantum = 0;
+    // terceiro token: alpha (opcional, usado por PRIOPEnv)
+    tok = strtok(NULL, ";");
+    if (tok) cfg->alpha = atoi(tok); else cfg->alpha = 0;
 
     // Lê linhas de tarefas dinamicamente 
     Tarefa *arr = NULL;

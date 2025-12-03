@@ -24,7 +24,7 @@ static void svg_text(FILE *f, int x, int y, const char *text) {
 }
 
 // Gera e salva o Gantt em SVG. 
-int ui_salvar_gantt_svg(TCB *tcbs_head, int total_ticks, const char *filename) {
+int ui_salvar_gantt_svg(TCB *tcbs_head, int total_ticks, const char *filename, const char *algoritmo, int alpha) {
     if(!filename) return -1;
 
     // Conta quantas tarefas (linhas) serão desenhadas 
@@ -57,9 +57,15 @@ int ui_salvar_gantt_svg(TCB *tcbs_head, int total_ticks, const char *filename) {
     for(TCB *p = tcbs_head; p != NULL; p = p->prox) {
         int y = MARGIN + idx*ROW_H;
     char label[64];
-    // id já inclui prefixo (ex: t01) 
+    // id já inclui prefixo (ex: t01)
     snprintf(label, sizeof(label), "%s", p->tarefa.id);
-        svg_text(f, 2, y + ROW_H/2 + 5, label);
+        // bar vertical position and inner height
+        int bar_y = y + 2;
+        int bar_h = ROW_H - 10;
+        int label_ty = bar_y + bar_h/2 + 5;
+    // center label within left margin area
+    fprintf(f, "<text x=\"%d\" y=\"%d\" font-family=\"Arial\" font-size=\"12\" text-anchor=\"middle\">%s</text>\n",
+        MARGIN/2, label_ty, label);
 
         // Fundo da linha (grade) 
         fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"#f8f8f8\" stroke=\"#eee\" />\n",
@@ -73,20 +79,71 @@ int ui_salvar_gantt_svg(TCB *tcbs_head, int total_ticks, const char *filename) {
     if(wait_len > 0) {
         int wx = MARGIN + wait_start * UNIT_W;
         int ww = wait_len * UNIT_W;
-        // branco com borda leve para indicar espera 
-        fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"#ffffff\" stroke=\"#bbb\" stroke-width=\"1\" />\n",
-            wx, y, ww, ROW_H-10);
+        // barra de espera inicial: cinza claro com mesmo contorno das execuções
+        fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"#e8e8e8\" stroke=\"#333\" stroke-width=\"1\" />\n",
+            wx, bar_y, ww, bar_h);
     }
 
-        // Desenha segmentos de execução 
-        for(int s = 0; s < p->segs_count; ++s) {
-            int sx = MARGIN + p->segs[s].start * UNIT_W;
-            int sw = p->segs[s].length * UNIT_W;
-            const char *col = p->tarefa.cor;
-            if(!col || strlen(col) == 0) col = "#88c";
-            fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"%s\" stroke=\"#333\" stroke-width=\"1\" />\n",
-                    sx, y, sw, ROW_H-10, col);
-        }
+                // Desenha segmentos de execução e lacunas de espera entre eles
+                int prev_end = p->tarefa.ingresso;
+                for(int s = 0; s < p->segs_count; ++s) {
+                    int seg_start = p->segs[s].start;
+                    int seg_len = p->segs[s].length;
+                    // draw waiting gap between prev_end and seg_start (if any)
+                    int gap = seg_start - prev_end;
+                    if (gap > 0) {
+                        int gx = MARGIN + prev_end * UNIT_W;
+                        int gw = gap * UNIT_W;
+                        fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"#e8e8e8\" stroke=\"#333\" stroke-width=\"1\" />\n",
+                                gx, bar_y, gw, bar_h);
+                    }
+
+                    int sx = MARGIN + seg_start * UNIT_W;
+                    int sw = seg_len * UNIT_W;
+                    const char *col = p->tarefa.cor;
+                    if(!col || strlen(col) == 0) col = "#88c";
+                    fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"%s\" stroke=\"#333\" stroke-width=\"1\" />\n",
+                            sx, bar_y, sw, bar_h, col);
+                    prev_end = seg_start + seg_len;
+                }
+
+                // If using PRIOPEnv, print priority value for each tick (waiting or executing)
+                if (algoritmo && (strcasecmp(algoritmo, "PRIOPEnv") == 0 || strcasecmp(algoritmo, "PRIOPENV") == 0)) {
+                    int waiting_count = 0;
+                        // iterate ticks from 0..total_ticks-1 and determine if task is executing at tick
+                        for (int t = 0; t < total_ticks; ++t) {
+                        // check if tick within any execution segment
+                        int in_exec = 0;
+                        for (int s = 0; s < p->segs_count; ++s) {
+                            int st = p->segs[s].start;
+                            int en = st + p->segs[s].length; // exclusive
+                            if (t >= st && t < en) { in_exec = 1; break; }
+                        }
+                            // only consider ticks at or after ingresso
+                            if (t < p->tarefa.ingresso) continue;
+
+                            // if task finished before this tick, stop printing
+                            if (p->tempo_fim >= 0 && t >= p->tempo_fim) break;
+
+                            char buf[32];
+                            int tx = MARGIN + t * UNIT_W + UNIT_W/2; // center of unit
+                            int ty = bar_y + bar_h/2 + 5; // vertical center of inner bar
+
+                            if (in_exec) {
+                                // while executing, priority shows base and waiting resets
+                                snprintf(buf, sizeof(buf), "%d", p->tarefa.prioridade);
+                                waiting_count = 0;
+                            } else {
+                                // waiting: increment waiting_count first so aging is immediate on first waiting tick
+                                waiting_count += 1;
+                                long eff = (long)p->tarefa.prioridade + (long)alpha * waiting_count;
+                                snprintf(buf, sizeof(buf), "%ld", eff);
+                            }
+                            // center text horizontally using text-anchor="middle"
+                            fprintf(f, "<text x=\"%d\" y=\"%d\" font-family=\"Arial\" font-size=\"12\" text-anchor=\"middle\">%s</text>\n",
+                                    tx, ty, buf);
+                    }
+                }
         idx++;
     }
 

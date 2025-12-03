@@ -28,6 +28,7 @@ typedef struct TCB {
     Seg *segs;
     int segs_count;
     int segs_cap;
+    int waiting_time; // ticks spent in PRONTA (used for aging)
 } TCB;
 TCB* tcb_criar(const Tarefa *t);
 void tcb_mudar_estado(TCB *tcb, Estado novo);
