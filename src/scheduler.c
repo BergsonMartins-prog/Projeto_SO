@@ -15,6 +15,7 @@ static char algoritmo[32];
 static int quantum_global = 0;
 static int alpha_global = 0; // aging parameter
 static int current_tick_global = 0;
+static int exec_tick_count = 0; // ticks executed by current running task in its current quantum
 
 // Remove um TCB da fila de prontos 
 void scheduler_remover(TCB *tcb){
@@ -52,6 +53,21 @@ void scheduler_init(const char *alg, int quantum, int alpha) {
 // Set the current simulation tick (used for aging calculations)
 void scheduler_set_current_tick(int tick) {
     current_tick_global = tick;
+}
+
+int scheduler_tick_executed(void) {
+    if (!executando) return 0;
+    // Only enforce quantum for RR algorithm
+    if (!(strcasecmp(algoritmo, "RR") == 0)) return 0;
+    // no quantum configured: never force yield here
+    if (quantum_global <= 0) return 0;
+    exec_tick_count += 1;
+    if (exec_tick_count >= quantum_global) {
+        // quantum expired
+        exec_tick_count = 0;
+        return 1;
+    }
+    return 0;
 }
 
 // Adiciona tcb à fila de prontos 
@@ -113,15 +129,27 @@ static TCB* choose_priority_aging(void) {
     TCB *best = NULL;
     long best_eff = LONG_MIN;
     for (TCB *p = prontos_head; p != NULL; p = p->prox_pronto) {
-        long wait = p->waiting_time;
-        if (wait < 0) wait = 0;
-        long eff = (long)p->tarefa.prioridade + (long)alpha_global * wait;
+        long eff;
+        // If the task is blocked (in IO), do not apply aging; use base priority
+        if (p->estado == BLOQUEADA) {
+            eff = (long)p->tarefa.prioridade;
+        } else {
+            long wait = p->waiting_time;
+            if (wait < 0) wait = 0;
+            eff = (long)p->tarefa.prioridade + (long)alpha_global * wait;
+        }
         if (!best || eff > best_eff) { best = p; best_eff = eff; }
     }
     if (executando && executando->estado == EXECUTANDO && executando->tempo_restante > 0) {
-        long wait_e = executando->waiting_time;
-        if (wait_e < 0) wait_e = 0;
-        long eff_e = (long)executando->tarefa.prioridade + (long)alpha_global * wait_e;
+        long eff_e;
+        // Executing task should not be considered aged while it's running; use base priority
+        if (executando->estado == BLOQUEADA) {
+            eff_e = (long)executando->tarefa.prioridade;
+        } else {
+            long wait_e = executando->waiting_time;
+            if (wait_e < 0) wait_e = 0;
+            eff_e = (long)executando->tarefa.prioridade + (long)alpha_global * wait_e;
+        }
         if (!best || eff_e >= best_eff) {
             return executando;
         }
@@ -132,17 +160,30 @@ static TCB* choose_priority_aging(void) {
 //escolhe a próxima tarefa e a marca como executando.
 TCB* scheduler_escolher_proxima(void){
     TCB *chosen = NULL;
+    // If there is a currently executing task and it still has remaining time
+    // For non-RR algorithms, keep it running until it finishes or blocks (no quantum-based preemption).
+    if (executando && executando->estado == EXECUTANDO && executando->tempo_restante > 0) {
+        if (strcasecmp(algoritmo, "RR") != 0) {
+            return executando;
+        } else {
+            // RR: allow running until its quantum expires (exec_tick_count handles it)
+            if (quantum_global > 0 && exec_tick_count < quantum_global) return executando;
+        }
+    }
     if(strcasecmp(algoritmo, "FIFO") == 0){
         chosen = choose_fifo();
     } 
     else if(strcasecmp(algoritmo, "SRTF") == 0){
         chosen = choose_srtf();
     } 
-    else if(strcasecmp(algoritmo, "PRIORIDADE") == 0 || strcasecmp(algoritmo, "PRIORITY") == 0) {
+    else if(strcasecmp(algoritmo, "PRIORIDADE") == 0 || strcasecmp(algoritmo, "PRIOP") == 0) {
         chosen = choose_priority_noaging();
     } else if (strcasecmp(algoritmo, "PRIOPEnv") == 0 || strcasecmp(algoritmo, "PRIOPENV") == 0) {
         /* Preemptive priority with aging */
         chosen = choose_priority_aging();
+    } else if (strcasecmp(algoritmo, "RR") == 0) {
+        /* Round Robin behaves like FIFO in selection order, quantum handled globally */
+        chosen = choose_fifo();
     } 
     else{
         chosen = choose_fifo();
@@ -153,6 +194,8 @@ TCB* scheduler_escolher_proxima(void){
         scheduler_remover(chosen);
         chosen->estado = EXECUTANDO;
         executando = chosen;
+        // reset quantum counter for newly chosen task
+        exec_tick_count = 0;
     } else {
         executando = NULL;
     }
@@ -199,4 +242,17 @@ void scheduler_yield_current(void){
         prontos_tail->prox_pronto = t;
         prontos_tail = t;
     }
+}
+
+// Block the currently executing TCB (used when the task starts an IO operation).
+void scheduler_block_current(void) {
+    if (!executando) return;
+    TCB *t = executando;
+    executando = NULL;
+    // mark as blocked
+    t->estado = BLOQUEADA;
+    // reset waiting time while blocked so aging does not reflect prior waiting
+    t->waiting_time = 0;
+    // ensure it's not in ready queue
+    t->prox_pronto = NULL;
 }

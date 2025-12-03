@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include "parser.h"
@@ -20,11 +21,12 @@ static int parse_tarefa_line(const char *line,Tarefa *out){
     strncpy(buf,line,sizeof(buf)-1);
     buf[sizeof(buf)-1] = '\0';
     trim_newline(buf);
-    // Tokenizar até 6 campos deixando para o proximo trabalho
-    char *tokens[6];
+
+    // Tokenizar todos os campos separados por ';'
+    char *tokens[64];
     int i = 0;
     char *p = strtok(buf,";");
-    while(p && i < 6){
+    while(p && i < (int)(sizeof(tokens)/sizeof(tokens[0]))){
         tokens[i++] = p;
         p = strtok(NULL,";");
     }
@@ -32,7 +34,7 @@ static int parse_tarefa_line(const char *line,Tarefa *out){
         return -1; 
     }
 
-    // Mapeia os campos da tarefa
+    // Mapeia os campos básicos da tarefa
     strncpy(out->id,tokens[0],sizeof(out->id)-1);
     out->id[sizeof(out->id)-1] = '\0';
     strncpy(out->cor,tokens[1],sizeof(out->cor)-1);
@@ -40,6 +42,82 @@ static int parse_tarefa_line(const char *line,Tarefa *out){
     out->ingresso = atoi(tokens[2]);
     out->duracao = atoi(tokens[3]);
     out->prioridade = atoi(tokens[4]);
+
+    // Inicializa lista de IOs
+    out->ios = NULL;
+    out->n_ios = 0;
+    // Inicializa lista de mutex ops
+    out->mops = NULL;
+    out->n_mops = 0;
+
+    // Tokens adicionais podem ser operações IO no formato IO:xx-yy
+    for(int j = 5; j < i; ++j){
+        char *tok = tokens[j];
+        if(!tok || tok[0] == '\0') continue;
+        if(strncasecmp(tok, "IO:", 3) == 0){
+            char *rest = tok + 3;
+            int instante = 0, dur = 0;
+            if(sscanf(rest, "%d-%d", &instante, &dur) == 2){
+                IOOp *na = realloc(out->ios, sizeof(IOOp) * (out->n_ios + 1));
+                if(!na){ perror("realloc");
+                    // on realloc failure, free what we had
+                    free(out->ios); out->ios = NULL; out->n_ios = 0;
+                    return -1;
+                }
+                out->ios = na;
+                out->ios[out->n_ios].instante = instante;
+                out->ios[out->n_ios].duracao = dur;
+                out->n_ios += 1;
+            } else {
+                fprintf(stderr, "Formato de IO inválido: %s\n", tok);
+                // treat as parse error
+                free(out->ios); out->ios = NULL; out->n_ios = 0;
+                return -1;
+            }
+        } else if (strncasecmp(tok, "ML", 2) == 0 || strncasecmp(tok, "MU", 2) == 0) {
+            // parse mutex op formats:
+            //   MLid:instante  (e.g. ML1:3)
+            //   ML:instante     (id omitted, defaults to 0) -> accept this for backward compatibility
+            int id = 0, instante = 0;
+            char kind = toupper((unsigned char)tok[0]) == 'M' && toupper((unsigned char)tok[1]) == 'L' ? 'L' : 'U';
+            // find ':'
+            char *pcol = strchr(tok, ':');
+            if (pcol) {
+                // parse optional number between ML/MU and ':'
+                char numbuf[16];
+                int nlen = (int)(pcol - (tok + 2));
+                if (nlen <= 0) {
+                    // id omitted, default 0
+                    id = 0;
+                } else if (nlen < (int)sizeof(numbuf)) {
+                    strncpy(numbuf, tok + 2, nlen);
+                    numbuf[nlen] = '\0';
+                    id = atoi(numbuf);
+                } else {
+                    fprintf(stderr, "Formato de mutex inválido (id muito longo): %s\n", tok);
+                    free(out->mops); out->mops = NULL; out->n_mops = 0; return -1;
+                }
+                // parse instante (required)
+                if (sscanf(pcol + 1, "%d", &instante) != 1) {
+                    fprintf(stderr, "Formato de mutex inválido (instante): %s\n", tok);
+                    free(out->mops); out->mops = NULL; out->n_mops = 0; return -1;
+                }
+                MutexOp *nm = realloc(out->mops, sizeof(MutexOp) * (out->n_mops + 1));
+                if (!nm) { perror("realloc"); free(out->mops); out->mops = NULL; out->n_mops = 0; return -1; }
+                out->mops = nm;
+                out->mops[out->n_mops].kind = kind;
+                out->mops[out->n_mops].id = id;
+                out->mops[out->n_mops].instante = instante;
+                out->n_mops += 1;
+            } else {
+                fprintf(stderr, "Formato de mutex inválido (esperado ML[id]:instante): %s\n", tok);
+                free(out->mops); out->mops = NULL; out->n_mops = 0; return -1;
+            }
+        } else {
+            // token desconhecido — ignorar para compatibilidade
+            continue;
+        }
+    }
 
     return 0;
 }
@@ -101,6 +179,19 @@ int parser_ler_arquivo(const char *path,Config *cfg){
 void parser_liberar(Config *cfg) {
     if (!cfg) return;
     if (cfg->tarefas) {
+        // liberar arrays internos de IO de cada tarefa
+        for (int i = 0; i < cfg->n_tarefas; ++i) {
+            if (cfg->tarefas[i].ios) {
+                free(cfg->tarefas[i].ios);
+                cfg->tarefas[i].ios = NULL;
+                cfg->tarefas[i].n_ios = 0;
+            }
+            if (cfg->tarefas[i].mops) {
+                free(cfg->tarefas[i].mops);
+                cfg->tarefas[i].mops = NULL;
+                cfg->tarefas[i].n_mops = 0;
+            }
+        }
         free(cfg->tarefas);
         cfg->tarefas = NULL;
     }

@@ -33,8 +33,37 @@ TCB* tcb_criar(const Tarefa *t){
     novo->segs_count = 0;
     novo->segs_cap = CAPACIDADE_SEGS;
     novo->waiting_time = 0;
+    novo->io_index = 0;
+    novo->io_remaining = 0;
+    novo->io_segs = NULL;
+    novo->io_segs_count = 0;
+    novo->io_segs_cap = 0;
+    novo->io_just_started = 0;
+    novo->mutex_index = 0;
+    novo->waiting_mutex_id = -1;
+    novo->blocked_since = -1;
+    novo->mutex_next = NULL;
 
     return novo;
+}
+
+// Ensure IO segments capacity
+static void ensure_io_segs(TCB *tcb){
+    if (tcb->io_segs_count >= tcb->io_segs_cap){
+        int nc = tcb->io_segs_cap == 0 ? CAPACIDADE_SEGS : tcb->io_segs_cap * 2;
+        IOSeg *ns = (IOSeg*) realloc(tcb->io_segs, sizeof(IOSeg) * nc);
+        if (!ns){ fprintf(stderr, "[ERRO] Falha realloc io_segs\n"); exit(EXIT_FAILURE); }
+        tcb->io_segs = ns;
+        tcb->io_segs_cap = nc;
+    }
+}
+
+void tcb_add_io_segment(TCB *tcb, int start, int length){
+    if (!tcb || length <= 0) return;
+    ensure_io_segs(tcb);
+    tcb->io_segs[tcb->io_segs_count].start = start;
+    tcb->io_segs[tcb->io_segs_count].length = length;
+    tcb->io_segs_count++;
 }
 
 //Garante capacidade no array de segmentos (dobra quando cheio)
@@ -139,5 +168,6 @@ void tcb_exibir(const TCB *tcb) {
 void tcb_free(TCB *tcb){
     if(!tcb) return;
     if(tcb->segs) free(tcb->segs);
+    if(tcb->io_segs) free(tcb->io_segs);
     free(tcb);
 }

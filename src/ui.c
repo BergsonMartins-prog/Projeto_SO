@@ -110,31 +110,51 @@ int ui_salvar_gantt_svg(TCB *tcbs_head, int total_ticks, const char *filename, c
                 // If using PRIOPEnv, print priority value for each tick (waiting or executing)
                 if (algoritmo && (strcasecmp(algoritmo, "PRIOPEnv") == 0 || strcasecmp(algoritmo, "PRIOPENV") == 0)) {
                     int waiting_count = 0;
-                        // iterate ticks from 0..total_ticks-1 and determine if task is executing at tick
+                        // Use recorded IO segments from TCB (if any) to treat IO ticks specially
+                        int n_intvs = p->io_segs_count;
+                        // iterate ticks from 0..total_ticks-1 and determine state at each tick
+                        int prev_state = -1; // 0=PRONTA,1=EXECUTANDO,2=BLOQUEADA
                         for (int t = 0; t < total_ticks; ++t) {
-                        // check if tick within any execution segment
-                        int in_exec = 0;
-                        for (int s = 0; s < p->segs_count; ++s) {
-                            int st = p->segs[s].start;
-                            int en = st + p->segs[s].length; // exclusive
-                            if (t >= st && t < en) { in_exec = 1; break; }
-                        }
                             // only consider ticks at or after ingresso
                             if (t < p->tarefa.ingresso) continue;
-
                             // if task finished before this tick, stop printing
                             if (p->tempo_fim >= 0 && t >= p->tempo_fim) break;
+
+                            // determine if in_exec
+                            int in_exec = 0;
+                            for (int s = 0; s < p->segs_count; ++s) {
+                                int st = p->segs[s].start;
+                                int en = st + p->segs[s].length; // exclusive
+                                if (t >= st && t < en) { in_exec = 1; break; }
+                            }
+                            // determine if in_io using recorded io_segs
+                            int in_io = 0;
+                            for (int ii = 0; ii < n_intvs; ++ii) {
+                                int ist = p->io_segs[ii].start;
+                                int ien = ist + p->io_segs[ii].length;
+                                if (t >= ist && t < ien) { in_io = 1; break; }
+                            }
+
+                            int state;
+                            if (in_exec) state = 1; // EXECUTANDO
+                            else if (in_io) state = 2; // BLOQUEADA (IO)
+                            else state = 0; // PRONTA (waiting)
 
                             char buf[32];
                             int tx = MARGIN + t * UNIT_W + UNIT_W/2; // center of unit
                             int ty = bar_y + bar_h/2 + 5; // vertical center of inner bar
 
-                            if (in_exec) {
-                                // while executing, priority shows base and waiting resets
+                            if (state == 1) {
+                                // executing: show base priority, reset waiting_count
                                 snprintf(buf, sizeof(buf), "%d", p->tarefa.prioridade);
                                 waiting_count = 0;
-                            } else {
-                                // waiting: increment waiting_count first so aging is immediate on first waiting tick
+                            } else if (state == 2) {
+                                // IO: show base priority and do not increment waiting_count
+                                snprintf(buf, sizeof(buf), "%d", p->tarefa.prioridade);
+                            } else { // PRONTA
+                                // if we just transitioned into PRONTA from non-PRONTA, reset waiting_count
+                                if (prev_state != 0) waiting_count = 0;
+                                // increment first so aging is immediate on first waiting tick
                                 waiting_count += 1;
                                 long eff = (long)p->tarefa.prioridade + (long)alpha * waiting_count;
                                 snprintf(buf, sizeof(buf), "%ld", eff);
@@ -142,7 +162,9 @@ int ui_salvar_gantt_svg(TCB *tcbs_head, int total_ticks, const char *filename, c
                             // center text horizontally using text-anchor="middle"
                             fprintf(f, "<text x=\"%d\" y=\"%d\" font-family=\"Arial\" font-size=\"12\" text-anchor=\"middle\">%s</text>\n",
                                     tx, ty, buf);
-                    }
+
+                            prev_state = state;
+                        }
                 }
         idx++;
     }
