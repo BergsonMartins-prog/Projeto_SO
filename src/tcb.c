@@ -47,7 +47,7 @@ TCB* tcb_criar(const Tarefa *t){
     return novo;
 }
 
-// Ensure IO segments capacity
+// Assegura capacidade para segmentos de IO
 static void ensure_io_segs(TCB *tcb){
     if (tcb->io_segs_count >= tcb->io_segs_cap){
         int nc = tcb->io_segs_cap == 0 ? CAPACIDADE_SEGS : tcb->io_segs_cap * 2;

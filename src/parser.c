@@ -60,7 +60,7 @@ static int parse_tarefa_line(const char *line,Tarefa *out){
             if(sscanf(rest, "%d-%d", &instante, &dur) == 2){
                 IOOp *na = realloc(out->ios, sizeof(IOOp) * (out->n_ios + 1));
                 if(!na){ perror("realloc");
-                    // on realloc failure, free what we had
+                    // em caso de falha no realloc, liberar o que já tínhamos
                     free(out->ios); out->ios = NULL; out->n_ios = 0;
                     return -1;
                 }
@@ -70,24 +70,21 @@ static int parse_tarefa_line(const char *line,Tarefa *out){
                 out->n_ios += 1;
             } else {
                 fprintf(stderr, "Formato de IO inválido: %s\n", tok);
-                // treat as parse error
+                // tratar como erro de análise
                 free(out->ios); out->ios = NULL; out->n_ios = 0;
                 return -1;
             }
         } else if (strncasecmp(tok, "ML", 2) == 0 || strncasecmp(tok, "MU", 2) == 0) {
-            // parse mutex op formats:
-            //   MLid:instante  (e.g. ML1:3)
-            //   ML:instante     (id omitted, defaults to 0) -> accept this for backward compatibility
             int id = 0, instante = 0;
             char kind = toupper((unsigned char)tok[0]) == 'M' && toupper((unsigned char)tok[1]) == 'L' ? 'L' : 'U';
-            // find ':'
+            // encontrar ':'
             char *pcol = strchr(tok, ':');
             if (pcol) {
-                // parse optional number between ML/MU and ':'
+                // analisar número opcional entre ML/MU e ':'
                 char numbuf[16];
                 int nlen = (int)(pcol - (tok + 2));
                 if (nlen <= 0) {
-                    // id omitted, default 0
+                    // id omitido, padrão 0
                     id = 0;
                 } else if (nlen < (int)sizeof(numbuf)) {
                     strncpy(numbuf, tok + 2, nlen);
@@ -97,7 +94,7 @@ static int parse_tarefa_line(const char *line,Tarefa *out){
                     fprintf(stderr, "Formato de mutex inválido (id muito longo): %s\n", tok);
                     free(out->mops); out->mops = NULL; out->n_mops = 0; return -1;
                 }
-                // parse instante (required)
+                // analisar instante (obrigatório)
                 if (sscanf(pcol + 1, "%d", &instante) != 1) {
                     fprintf(stderr, "Formato de mutex inválido (instante): %s\n", tok);
                     free(out->mops); out->mops = NULL; out->n_mops = 0; return -1;
@@ -156,7 +153,8 @@ int parser_ler_arquivo(const char *path,Config *cfg){
     int cap = 0, n = 0;
     while (fgets(line, sizeof(line), f)) {
         trim_newline(line);
-        if (line[0] == '\0') continue; //pular linhas vazias
+        if (line[0] == '\0') 
+            continue; //pular linhas vazias
         if (n >= cap){
             int nc = cap == 0 ? 8 : cap*2;
             Tarefa *na = realloc(arr, sizeof(Tarefa) * nc);
